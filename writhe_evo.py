@@ -1,0 +1,202 @@
+import numpy as np
+from tqdm import tqdm
+import biobox as bb
+import plotly.graph_objects as go
+
+# from writhe_c import find_Sigma_array
+
+
+def unit_vec(u1, u2):
+    
+    cross = np.cross(u1, u2)
+    return np.divide( cross, np.linalg.norm(cross) )
+
+
+def points_2_vectors(p1, p2, p3, p4):
+
+    r_12 = p2 - p1
+    r_13 = p3 - p1
+    r_14 = p4 - p1
+
+    r_23 = p3 - p2
+    r_24 = p4 - p2
+    r_34 = p4 - p3
+    
+    return r_12, r_13, r_14, r_23, r_24, r_34
+
+
+def Gauss_Int_4_segment(p1, p2, p3, p4):
+    
+    r_12, r_13, r_14, r_23, r_24, r_34 = points_2_vectors(p1, p2, p3, p4)
+
+    n1 = unit_vec(r_13, r_14)
+    n2 = unit_vec(r_14, r_24)
+    n3 = unit_vec(r_24, r_23)
+    n4 = unit_vec(r_23, r_13)
+
+    Sigma_star = np.arcsin(np.dot(n1,n2)) + np.arcsin(np.dot(n2,n3)) \
+               + np.arcsin(np.dot(n3,n4)) + np.arcsin(np.dot(n4,n1))
+    
+    return 1/(4*np.pi) * Sigma_star * np.sign( np.dot( np.cross(r_34, r_12), r_13 ) )
+
+
+def find_Sigma_array(segments):
+    
+    size = segments.shape[0]-1
+    Sigma_array = np.zeros([size, size])
+    
+    for i in range(1,segments.shape[0]-1):
+
+        p1 = segments[i,:]
+        p2 = segments[i+1,:]
+        
+
+        for j in np.arange(0, i-1):
+
+            p3 = segments[j,:]
+            p4 = segments[j+1,:]
+
+            Sigma_array[i,j] = Gauss_Int_4_segment(p1, p2, p3, p4)
+            
+    return 2*Sigma_array
+
+
+
+def writhe_heatmap_plot(writhe_arr):
+
+    fig = go.Figure()
+    fig.add_trace(go.Heatmap(z=writhe_arr,
+                             colorscale='RdBu_r',
+                             # color_continuous_midpoint=0, color_continuous_scale='RdBu_r',
+                             colorbar = dict(title='Writhe')))
+    fig.update_layout(height=600, template='simple_white')
+   
+    return fig
+
+
+def writhe_diff(writhe_arr_X, writhe_arr_Y):
+   
+    wr_diff = writhe_arr_X - writhe_arr_Y
+    gw = wr_diff[:,0]
+    gw = np.append(gw, 0)
+   
+    return gw
+   
+   
+def writhe_diff_plotter(writhe_arr_X, writhe_arr_Y):
+   
+    gw = writhe_diff(writhe_arr_X, writhe_arr_Y)
+   
+    fig = make_subplots(vertical_spacing=0.1, horizontal_spacing=.01,
+                    rows=1, cols=2,
+                    specs=[[{'type': 'scatter3d'}, {'type': 'scatter3d'}]],
+                    subplot_titles=("Structure X", "Structure Y"))
+
+
+    fig.add_trace(go.Scatter3d(x=writhe_arr_X[:,0],y=writhe_arr_X[:,1], z=writhe_arr_X[:,2], opacity=.9,
+                               mode='markers+lines', name='X',
+                               line=dict(width=12, color=gw, colorscale='RdBu_r'),
+                               marker=dict(size=5, color=np.arange(writhe_arr_X.shape[0]), colorscale='gray', opacity=0.6)),
+                  row=1, col=1)
+
+    fig.add_trace(go.Scatter3d(x=writhe_arr_Y[:,0],y=writhe_arr_Y[:,1], z=writhe_arr_Y[:,2], opacity=.9,
+                               mode='markers+lines', name='Y',
+                               line=dict(width=12, color=gw, colorscale='RdBu_r'),
+                               marker=dict(size=5, color=np.arange(writhe_arr_Y.shape[0]), colorscale='gray', opacity=0.6)),
+                  row=1, col=2)
+
+    fig.update_layout(
+        title_text='Change in writhe',
+        height=800,
+        width=1600,
+        template='simple_white' )
+
+    return fig
+
+
+
+def writhe_evolution(traj_file, n, begin_frame, end_frame, step=10):
+
+    u = bb.Molecule(traj_file)
+    print("We've read your trajectory...")
+    
+    # if (begin_frame!=None) & (end_frame!=None):
+    
+    frame_range = np.arange(u.coordinates.shape[0])[begin_frame:end_frame][::step]
+
+
+    alpha_conds = u.data['name']=='CA'
+
+    frame_coordinates = u.coordinates[0][alpha_conds][::n]
+    Sigma_array = find_Sigma_array(frame_coordinates)
+    sp_size = ep_size = Sigma_array.shape[0]
+
+    all_coords = np.zeros([frame_range.shape[0], frame_coordinates.shape[0], 3])
+
+    matrix_nres = np.full([frame_range.shape[0], sp_size, ep_size], np.nan)
+
+    for i, frame in enumerate(tqdm(frame_range)):
+
+        frame_coordinates = u.coordinates[frame][alpha_conds][::n]
+        all_coords[i, :, :] = frame_coordinates
+        Sigma_array = find_Sigma_array(frame_coordinates)    
+
+        for sp in np.arange(sp_size):
+            for ep in np.arange(sp, ep_size):
+                matrix_nres[i, ep,sp] = np.sum(Sigma_array[sp:ep,sp:ep])
+                
+    
+    matrix_nres = matrix_nres[:,3:,:-3]
+    a, b = np.triu_indices(matrix_nres.shape[1],k=1)
+    matrix_nres[:,a,b] = np.nan
+    
+    return matrix_nres
+    
+    
+def writhe_fingerprint(segments):
+    
+    Sigma_array = find_Sigma_array(segments)
+    
+    sp_size = ep_size = Sigma_array.shape[0]
+    
+    matrix_nres = np.full([sp_size, ep_size], np.nan)
+    
+    for sp in np.arange(sp_size):
+        for ep in np.arange(sp, ep_size):
+            matrix_nres[ep,sp] = np.sum(Sigma_array[sp:ep,sp:ep])
+            
+    matrix_nres = matrix_nres[3:,:-3]
+    a, b = np.triu_indices(matrix_nres.shape[1],k=1)
+    matrix_nres[a,b] = np.nan   
+    
+    return matrix_nres
+
+
+def sigma_evolution(traj_file, n, begin_frame, end_frame, step=10):
+    
+    
+    u = bb.Molecule(traj_file)
+    print("We've read your trajectory...")
+
+    alpha_conds = u.data['name']=='CA'
+    
+    
+    frame_range = np.arange(u.coordinates.shape[0])[begin_frame:end_frame][::step]
+    
+    
+    frame_coordinates = u.coordinates[0][alpha_conds][::n]
+    Sigma_array = find_Sigma_array(frame_coordinates)    
+    sp_size = ep_size = Sigma_array.shape[0]
+
+    all_coords = np.zeros([frame_range.shape[0], frame_coordinates.shape[0], 3])
+
+    matrix_nres = np.full([frame_range.shape[0], sp_size, ep_size], np.nan)
+
+    for i, frame in enumerate(tqdm(frame_range)):
+
+        frame_coordinates = u.coordinates[frame][alpha_conds][::n]
+        all_coords[i, :, :] = frame_coordinates
+        matrix_nres[i, :, :] = find_Sigma_array(frame_coordinates) 
+        
+        
+    return matrix_nres

@@ -1,0 +1,6 @@
+Metadata-Version: 2.1
+Name: wiggle
+Version: 0.1
+Summary: Package used in my No Loose Ends Lab, where I explore a subfield of mathematics known as knot theory, specifically a metric of self entanglement referred to as the writhe. Im looking into its potential as a geometrical representation to help solve real world problems such as proteins folding!
+Author: Josh McKeown
+Author-email: josh.j.mckeown@durham.ac.uk
