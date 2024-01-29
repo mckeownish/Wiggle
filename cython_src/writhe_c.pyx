@@ -129,32 +129,35 @@ cdef double Gauss_Int_4_segment(cnp.ndarray[cnp.float64_t, ndim=1] p1,
 
 
 # Matrix of Writhes for all segment pairs in curve (symmetric along diagonal)
-cpdef cnp.ndarray[cnp.float64_t, ndim=2] find_Sigma_array(cnp.ndarray[cnp.float64_t, ndim=2] segments):
+cpdef cnp.ndarray[cnp.float64_t, ndim=2] find_Sigma_array(cnp.ndarray[cnp.float64_t, ndim=2] curve_points):
 
     """
     Computes the pairwise entanglement (writhe ~ Sigma values) for each pair of segments in a discrete curve input.
 
     Parameters:
-    segments (numpy.ndarray): Array of coordinates a discrete curve.
+    curve_points (numpy.ndarray): Array of coordinates describing a discrete curve.
 
     Returns:
     numpy.ndarray: A 2D array representing the entanglement writhe for each pair of segments in a discrete curve.
     """
 
-    cdef int size = segments.shape[0]-1
-    cdef cnp.ndarray[cnp.float64_t, ndim=2] Sigma_array = np.zeros([size, size], dtype=np.float64)
+    # number of segments is number of XYZ points -1
+#   # eg. *-*-*-*, #(*)=4, #(-)=3
+
+    cdef int segment_num = curve_points.shape[0]-1
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] Sigma_array = np.zeros([segment_num, segment_num], dtype=np.float64)
     cdef int i, j
     cdef cnp.ndarray[cnp.float64_t, ndim=1] p1, p2, p3, p4
     
-    for i in range(1,segments.shape[0]-1):
+    for i in range(1,curve_points.shape[0]-1):
 
-        p1 = segments[i,:]
-        p2 = segments[i+1,:]
+        p1 = curve_points[i,:]
+        p2 = curve_points[i+1,:]
         
         for j in range(0, i-1):
 
-            p3 = segments[j,:]
-            p4 = segments[j+1,:]
+            p3 = curve_points[j,:]
+            p4 = curve_points[j+1,:]
 
             Sigma_array[i,j] = Gauss_Int_4_segment(p1, p2, p3, p4)
             
