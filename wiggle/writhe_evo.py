@@ -125,24 +125,29 @@ def writhe_heatmap_plotly(writhe_arr):
 def writhe_heatmap_plot_non_linear_color(Sigma_array, title='Colour Scale: Distribution'):
 
     Sigma_array[np.triu_indices(Sigma_array.shape[0], -1)] = np.nan
+    Sigma_array = Sigma_array[2:,:-2]
     x = np.ravel(Sigma_array)
     x = x[~np.isnan(x)]
 
     sorted_x = np.sort(x)
+
+    cn = int( min(x.shape[0]/2, 100) )
+    crange = np.arange(1,cn)
+    half_ind = int( np.floor( len(crange)/2 ) )
     
     # index of 1%, 2%, ... 99% point in sorted x values
-    deci_indices = np.floor(np.arange(1,100)*sorted_x.shape[0]/100)
+    deci_indices = np.floor( crange*sorted_x.shape[0]/cn)
     deci_vals = sorted_x[deci_indices.astype(int)]
     
     # Whatever happens, jappens - no monkey business moving middles values around
     # bounds = deci_vals
 
     # Shift entire s-curve so middle value is zero - not sure if this is okay to do, but I'm god here so what I say goes!
-    bounds = deci_vals - deci_vals[49]
+    bounds = deci_vals - deci_vals[half_ind]
 
     # Just a cheeky check that we havent fucked the top / bottom end - as we append the first + last val of x as the bin edges
-    assert sorted_x[-1] - sorted_x[-2] > deci_vals[49], 'Shift to renormalise color scale larger than diff between last 2 vals'
-    assert sorted_x[1] - sorted_x[0] > deci_vals[49], 'Shift to renormalise color scale larger than diff between first 2 vals'
+    assert sorted_x[-1] - sorted_x[-2] > deci_vals[half_ind], 'Shift to renormalise color scale larger than diff between last 2 vals'
+    assert sorted_x[1] - sorted_x[0] > deci_vals[half_ind], 'Shift to renormalise color scale larger than diff between first 2 vals'
     
     bounds = np.append(sorted_x[0], bounds)
     bounds = np.append(bounds, sorted_x[-1])
