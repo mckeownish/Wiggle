@@ -12,7 +12,7 @@ extensions = [
 # Use cythonize on the extensions
 setup(
     name='wiggle',
-    version='0.1',
+    version='0.2',
     packages=find_packages(),
     ext_modules=cythonize(extensions),
     include_dirs=[numpy.get_include()],
