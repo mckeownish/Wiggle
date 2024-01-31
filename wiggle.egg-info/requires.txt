@@ -1,7 +1,0 @@
-numpy
-scipy
-plotly
-pandas
-biobox
-biopython
-tqdm

@@ -1,2 +1,94 @@
+# Cython compiled files
+*.cpython-*.so
+*.o
+*.c
+
+# Egg-info
+*.egg-info/
+*.egg
+
+# Build artifacts
+build/
+dist/
+
+# Add other files and directories as required
+
+# macOS system files
 .DS_Store
-wiggle/.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux system files
+*~
+
+# Directory-specific temporary files
+**/.DS_Store
+**/Thumbs.db
+
+# Compiled Python files
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+*.pyc
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Virtual environment
+venv/
+ENV/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# VS Code
+.vscode/
+
+# Environment variables file
+.env
+
+# Node.js
+node_modules/
+npm-debug.log
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Build artifacts
+build/
+dist/
+
+# Backup files
+*.bak
+*.tmp
+*.swp
+
+# Other files and folders to ignore
+.idea/
+*.iml
+*.suo
+*.user
+*.sln.docstates
