@@ -1,7 +1,5 @@
 # Wiggle
 
-This repo is a collection of packages/functions used in my e-lab _No Loose Ends_, where I explore a subfield of mathematics known as knot theory, specifically metrics of self entanglement such as the writhe. This metric has lots of potential as a geometrical representation of curves used in solving real world problems such as proteins folding.
-
 ## Sub Modules
 
 ### writhe
