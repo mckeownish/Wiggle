@@ -258,7 +258,7 @@ def calculate_chi_squared(I_exp, I_mod, sigma_exp=None):
     
     return round(chi_squared, 2)
 
-def fancy_SAXS_profile_1(q_exp, I_exp, I_exp_err, q_mod1, I_mod1, label1, maxq=0.22, savename=None, data_label='data'):
+def fancy_SAXS_profile_1(q_exp, I_exp, I_exp_err, q_mod1, I_mod1, label1, maxq=0.22, savename=None, data_label='data', reslim=0.35):
 
     fontsize = 16
 
@@ -313,7 +313,7 @@ def fancy_SAXS_profile_1(q_exp, I_exp, I_exp_err, q_mod1, I_mod1, label1, maxq=0
 
 
     # ax2.set_xlim([min(q_mod), max(q_mod)])
-    ax2.set_ylim([-0.35, 0.35])
+    ax2.set_ylim([-reslim, reslim])
 
     # Adjust tick size
     for ax in [ax1, ax2]:
@@ -345,7 +345,7 @@ def fancy_SAXS_profile_1(q_exp, I_exp, I_exp_err, q_mod1, I_mod1, label1, maxq=0
     plt.show()
 
 
-def fancy_SAXS_profile_2(q_exp, I_exp, I_exp_err, q_mod1, I_mod1, label1, q_mod2, I_mod2, label2, maxq = 0.22, savename=None, data_label='data'):
+def fancy_SAXS_profile_2(q_exp, I_exp, I_exp_err, q_mod1, I_mod1, label1, q_mod2, I_mod2, label2, maxq = 0.22, savename=None, data_label='data', reslim=0.35):
     
     fontsize = 16
     # set q range to match experimental data
@@ -413,7 +413,7 @@ def fancy_SAXS_profile_2(q_exp, I_exp, I_exp_err, q_mod1, I_mod1, label1, q_mod2
     ax2.plot(q_exp, residuals2, color='blue', linewidth=1)
 
     # ax2.set_xlim([min(q_mod), max(q_mod)])
-    ax2.set_ylim([-0.35, 0.35])
+    ax2.set_ylim([-reslim, reslim])
 
     # Adjust tick size
     for ax in [ax1, ax2]:
