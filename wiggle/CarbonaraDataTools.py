@@ -39,8 +39,9 @@ import json
 
 from glob import glob
 
-import hdbscan
+#import hdbscan
 
+import mdtraj as md
 
 # Utility stuff
 
@@ -199,77 +200,170 @@ def Carbonara_2_PDB(coords_file, fp_file, output_file):
 
 # The meet of extracting
 
+#def pull_structure_from_pdb(pdb_file):
+#    """
+#    Pulls the structure from a (single) PDB file and returns the coordinates and sequence of the chain(s).
+#
+#    Parameters:
+#        pdb_file (str): The path of the PDB file.
+#
+#    Returns:
+#        coords_chain (list): A list of numpy arrays containing the coordinates of the chain(s).
+#        sequence_chain (list): A list of numpy arrays containing the sequence of the chain(s).
+#        secondary_structure_chains (list)
+#        missing_residues_chain (list): A list of numpy arrays containing the missing residues of the chain(s).
+#
+#    Raises:
+#        ValueError: If no chains are found in the PDB file.
+#
+#    Example:
+#        coords_chains, sequence_chains, missing_residues_chains = pull_structure_from_pdb('/path/to/pdb/file.pdb')
+#    """
+#    
+#    M = pdb_2_biobox(pdb_file)
+#
+#    coords_chains = []
+#    sequence_chains = []
+#    secondary_structure_chains = []
+#
+#    missing_residues_chains = []
+#
+#    chains = M.data['chain'].unique()
+#    ca_cond = M.data['name']=='CA'
+#    
+#
+#    if len(chains) > 1:
+#
+#        coords_chains = []
+#        sequence_chains = []
+#
+#        for c in chains:
+#
+#            # indices within chain that are CA
+#            cond = (M.data['chain']==c) & (ca_cond)
+#
+#            # append coordinates of CA atoms in chain
+#            coords = M.coordinates[0][cond]
+#            coords_chains.append( coords )
+#
+#            # append sequence of chain
+#            sequence_chains.append( M.data['resname'][cond].map( get_residue_map() ).values )
+#
+#            # find secondary structure of chain using geometric method
+#            secondary_structure_chains.append( geometric_secondary_structure(coords, threshold=0.2) )
+#
+#            # find missing residues in chain
+#            resIDs = M.data['resid'][cond].values
+#            missing_residues = find_missing_residues(resIDs)
+#            missing_residues_chains.append(missing_residues)
+#
+#    elif len(chains) == 1:
+#
+#        coords = M.coordinates[0][ca_cond]
+#        coords_chains = [coords]
+#        
+#        sequence_chains = [M.data['resname'][ca_cond].map( get_residue_map() ).values]
+#        
+#        secondary_structure_chains = [geometric_secondary_structure(coords, threshold=0.2)]
+#
+#        resIDs = M.data['resid'][ca_cond].values
+#        missing_residues_chains = [find_missing_residues(resIDs)]
+#
+#    else:
+#        raise ValueError("No chains found in pdb file")
+#
+#    return coords_chains, sequence_chains, secondary_structure_chains, missing_residues_chains
+
+
 def pull_structure_from_pdb(pdb_file):
     """
-    Pulls the structure from a (single) PDB file and returns the coordinates and sequence of the chain(s).
+    Pulls the structure from a (single) PDB file using MDTraj and returns the coordinates
+    and sequence of the chain(s).
 
     Parameters:
         pdb_file (str): The path of the PDB file.
 
     Returns:
-        coords_chain (list): A list of numpy arrays containing the coordinates of the chain(s).
+        coords_chain (list): A list of numpy arrays containing the CA coordinates of the chain(s).
         sequence_chain (list): A list of numpy arrays containing the sequence of the chain(s).
+        secondary_structure_chains (list): A list of predicted secondary structures for each chain.
         missing_residues_chain (list): A list of numpy arrays containing the missing residues of the chain(s).
 
     Raises:
         ValueError: If no chains are found in the PDB file.
 
     Example:
-        coords_chains, sequence_chains, missing_residues_chains = pull_structure_from_pdb('/path/to/pdb/file.pdb')
+        coords_chains, sequence_chains, secondary_structure_chains, missing_residues_chains =
+            pull_structure_from_pdb_mdtraj('/path/to/pdb/file.pdb')
     """
+    # Load the PDB file
+    traj = md.load(pdb_file)
     
-    M = pdb_2_biobox(pdb_file)
-
+    # Get topology
+    topology = traj.topology
+    
+    # Create a mapping for three-letter to one-letter amino acid codes
+    three_to_one = get_residue_map()
+    
+    # Get unique chains
+    chains = [chain for chain in topology.chains]
+    
+    if len(chains) == 0:
+        raise ValueError("No chains found in pdb file")
+    
     coords_chains = []
     sequence_chains = []
     secondary_structure_chains = []
-
     missing_residues_chains = []
-
-    chains = M.data['chain'].unique()
-    ca_cond = M.data['name']=='CA'
     
-
-    if len(chains) > 1:
-
-        coords_chains = []
-        sequence_chains = []
-
-        for c in chains:
-
-            # indices within chain that are CA
-            cond = (M.data['chain']==c) & (ca_cond)
-
-            # append coordinates of CA atoms in chain
-            coords = M.coordinates[0][cond]
-            coords_chains.append( coords )
-
-            # append sequence of chain
-            sequence_chains.append( M.data['resname'][cond].map( get_residue_map() ).values )
-
-            # find secondary structure of chain using geometric method
-            secondary_structure_chains.append( geometric_secondary_structure(coords, threshold=0.2) )
-
-            # find missing residues in chain
-            resIDs = M.data['resid'][cond].values
-            missing_residues = find_missing_residues(resIDs)
+    # Compute secondary structure for the entire trajectory
+    ss_pred = md.compute_dssp(traj, simplified=True)[0]
+    ss_map = {'H': 'H', 'E': 'S', 'C': '-'}
+    ss_pred_mapped = np.array([ss_map[ss] for ss in ss_pred])
+    
+    # For each chain in the PDB
+    residue_index = 0
+    for chain in chains:
+        # Get residues in this chain
+        residues = list(chain.residues)
+        
+        # Extract CA atoms for this chain
+        ca_atoms_indices = []
+        resids = []
+        seq = []
+        
+        for res in residues:
+            resids.append(res.resSeq)
+            
+            # Get one letter code for the residue
+            if res.name in three_to_one:
+                seq.append(three_to_one[res.name])
+            else:
+                seq.append('X')  # Unknown amino acid
+                
+            # Find CA atom index
+            for atom in res.atoms:
+                if atom.name == 'CA':
+                    ca_atoms_indices.append(atom.index)
+                    break
+        
+        # Get coordinates of CA atoms
+        if ca_atoms_indices:
+            ca_coords = traj.xyz[0, ca_atoms_indices, :]*10 # << nm to A!!!
+            coords_chains.append(ca_coords)
+            sequence_chains.append(np.array(seq))
+            
+            # Get secondary structure for this chain
+            chain_ss = ss_pred_mapped[residue_index:residue_index + len(residues)]
+            secondary_structure_chains.append(chain_ss)
+            
+            # Find missing residues
+            resids = np.array(resids)
+            missing_residues = find_missing_residues(resids)
             missing_residues_chains.append(missing_residues)
-
-    elif len(chains) == 1:
-
-        coords = M.coordinates[0][ca_cond]
-        coords_chains = [coords]
-        
-        sequence_chains = [M.data['resname'][ca_cond].map( get_residue_map() ).values]
-        
-        secondary_structure_chains = [geometric_secondary_structure(coords, threshold=0.2)]
-
-        resIDs = M.data['resid'][ca_cond].values
-        missing_residues_chains = [find_missing_residues(resIDs)]
-
-    else:
-        raise ValueError("No chains found in pdb file")
-
+            
+            residue_index += len(residues)
+            
     return coords_chains, sequence_chains, secondary_structure_chains, missing_residues_chains
 
 
@@ -1029,7 +1123,7 @@ def generate_random_structures(coords_file, fingerprint_file):
         outputname = random_working+'/section_'+str(l)
 
 #         !./generate_structure {fingerprint_file} {coords_file} {outputname} {l}
-        result = subprocess.run(['./generate_structure', fingerprint_file, coords_file, outputname, str(l)], capture_output=True, text=True)
+        result = subprocess.run(['/Users/josh/Documents/PhD/DevDungeon/carbonara/build/bin/generate_structure', fingerprint_file, coords_file, outputname, str(l)], capture_output=True, text=True)
 
     # print('')
     # print('Finished generating random structures')
@@ -2322,13 +2416,13 @@ def visualise_clusters(coord_tensor, labels, best_fit_files):
     return fig, bf_names_sort
 
 
-def cluster(rmsd_arr):
-    '''
-    Updated your cluster, think allow_single_cluster is fine for us (if we make good predictions then this could well happen)
-    '''
-    clusterer = hdbscan.HDBSCAN(metric = 'precomputed',min_cluster_size=3,allow_single_cluster=True)
-    clusterer.fit(rmsd_arr)
-    return clusterer.labels_, clusterer.probabilities_
+#def cluster(rmsd_arr):
+#    '''
+#    Updated your cluster, think allow_single_cluster is fine for us (if we make good predictions then this could well happen)
+#    '''
+#    clusterer = hdbscan.HDBSCAN(metric = 'precomputed',min_cluster_size=3,allow_single_cluster=True)
+#    clusterer.fit(rmsd_arr)
+#    return clusterer.labels_, clusterer.probabilities_
 
 
 # Arron SKMT structure analysis bits

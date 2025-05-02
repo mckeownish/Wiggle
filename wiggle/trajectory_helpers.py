@@ -6,20 +6,20 @@ from sklearn.decomposition import PCA
 import numpy as np
 
 
-def align_first_frames_merge(gro_files, xtc_files, merge_xtc_name):
+def align_first_frames_merge(gro_file_list, xtc_files_list, merge_xtc_name):
 
     # ensure the number of gro and xtc files is the same
-    assert len(gro_files) == len(xtc_files), "Different number of gro and xtc files"
+    assert len(gro_file_list) == len(xtc_files_list), "Different number of gro and xtc files"
 
     # ensure merge_xtc_name ends with .xtc
     assert merge_xtc_name.endswith('.xtc'), "The output file name must end with .xtc"
 
     # ensure merge_xtc_name is not in the list of xtc_files
-    assert merge_xtc_name not in xtc_files, "The output file name must not be in the list of input xtc files"
+    assert merge_xtc_name not in xtc_files_list, "The output file name must not be in the list of input xtc files"
 
 
     # Load the first trajectory (this will be used as the reference for alignment)
-    u_ref = mda.Universe(gro_files[0], xtc_files[0])
+    u_ref = mda.Universe(gro_file_list[0], xtc_files_list[0])
 
     # Select atoms or group for alignment (e.g., protein backbone)
     selection = u_ref.select_atoms("protein and backbone")
@@ -30,7 +30,7 @@ def align_first_frames_merge(gro_files, xtc_files, merge_xtc_name):
     # Prepare the merged trajectory writer
     with mda.Writer(merge_xtc_name, n_atoms=u_ref.atoms.n_atoms) as writer:
         # Iterate over the trajectories to align them to the first frame of the first trajectory
-        for gro_file, traj_file in zip(gro_files[1:], xtc_files[1:]):  # Add more trajectories as needed
+        for gro_file, traj_file in zip(gro_file_list[1:], xtc_files_list[1:]):  # Add more trajectories as needed
 
             u = mda.Universe(gro_file, traj_file)
             
@@ -66,11 +66,11 @@ def find_PCA_motions(merged_xtc_file, first_frame_file, save_prefix):
     
     for i, vec in enumerate(pc_vectors):
 
-        save_pc_motion(vec, f'{save_prefix}_PC{i}', n_frames=20, scale_factor=10)
+        save_pc_motion(vec, f'{save_prefix}_PC{i}', ca_atoms, ca_traj, traj, n_frames=20, scale_factor=10)
 
 
 #save PC motion in PDB format 
-def save_pc_motion(pc_vector, filename, n_frames=20, scale_factor=10):
+def save_pc_motion(pc_vector, filename, ca_atoms, ca_traj, traj, n_frames=20, scale_factor=10):
     mean_structure = np.mean(ca_traj, axis=0)
 
     #interpolate between the mean and displaced structures
