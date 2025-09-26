@@ -12,7 +12,7 @@ extensions = [
 # Use cythonize on the extensions
 setup(
     name='wiggle',
-    version='0.2',
+    version='0.5',
     packages=find_packages(),
     ext_modules=cythonize(extensions),
     include_dirs=[numpy.get_include()],
@@ -23,8 +23,8 @@ setup(
         'pandas',
         'biobox',
         'biopython',
-        'tqdm'
-        
+        'tqdm',
+        'selenium'
     ],
     author='Josh McKeown',  # Add author information
     author_email = 'josh.j.mckeown@durham.ac.uk',

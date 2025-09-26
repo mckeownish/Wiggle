@@ -6,8 +6,14 @@ import biobox as bb
 
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-from scipy.optimize import least_squares
 
+
+
+from matplotlib.ticker import AutoMinorLocator
+import matplotlib.pyplot as plt
+plt.rcParams['svg.fonttype'] = 'none'
+
+from statsmodels.nonparametric.smoothers_lowess import lowess
 from tqdm import tqdm
 
 
@@ -159,287 +165,178 @@ def calculate_scattering_profile(q_values,pdb_file):
 
 ### --- Visualisation --- ###
 
-def plot_fit_data(q_exp, I_exp, model_data, xlims=None, fig_title='SAXS Profile'):
-    """
-    Plot and compare multiple SAXS profiles with experimental data.
-
-    Parameters:
-    q_exp (array): Experimental q-values
-    I_exp (array): Experimental intensities
-    model_data (list of dict): List of model data, each dict should have keys 'q', 'I', and 'label'
-    xlims (tuple): Limits for the x-axis (optional)
-    fig_title (str): Title of the figure (optional)
-    """
-
-    # plotting lims
-    q_lb = min(min(q_exp), *[min(model['q']) for model in model_data])
-    q_ub = max(max(q_exp), *[max(model['q']) for model in model_data])
 
 
-    plt.figure(figsize=(10, 8), dpi=300)
+def compare_plotting(q_exp, I_exp, I_exp_err, mod_dict, maxq=0.22, ylims=None, savename=None, exp_label='experimental'):
 
-    # Plot the experimental data
-    plt.subplot(2, 1, 1)
-    plt.scatter(q_exp, I_exp, label='Experimental data', alpha=0.2, color='red')
-    plt.ylabel('I(q) (log scale)')
-    plt.yscale('log')
-    plt.title(fig_title)
-    plt.legend()
+    '''
+    Compare experimental data with model data
+
+    args:
+        q_exp: numpy array of q values
+        I_exp: numpy array of I values
+        I_exp_err: numpy array of I error values
+        mod_dict: dictionary of model data
+        maxq: maximum q value to plot
+        ylims: y limits to plot
+
+    Example:
+        saxs_files = glob('MySAXS_files/*.w/e')
+        saxs_files = sorted(saxs_files, key=lambda x: int(x.split('_')[-1].split('.')[0]))
+
+        q_lst, I_lst, I_err_lst = [], [], []
+
+        for f in saxs_files:
+            q, I, I_err = get_saxs_from_file(f)
+
+            q_lst.append(q)
+            I_lst.append(I)
+            I_err_lst.append(I_err)
+
+        I_av = np.mean(I_lst, axis=0)
+        I_err_av = np.mean(I_err_lst, axis=0)
+
+        mod_dict = {'WAXSiS': [qWAX, IWAX]}
+        fn = 0
+        compare_plotting(q[fn:], I_av[fn:], I_err_av[fn:], mod_dict, maxq = 0.25, savename=None)
+    '''
+
+    # Constants
+    COLORS = {
+        'red': '#b2182b',
+        'blue': '#2166ac',
+        'exp': 'black',
+        'errorbar': 'lightgrey'
+    }
+    MODEL_COLORS = [COLORS['red'], COLORS['blue'], 'orange', 'green', 'purple', 'cyan', 'magenta']
+    FONTSIZE = {
+        'xlabel': 20,
+        'ylabel': 20,
+        'title': 16,
+        'legend': 20,
+        'tick': 16
+    }
+
+    def preprocess_data(q, I, I_err, minq, maxq):
+        cond = (q >= minq) & (q <= maxq) & (I > 0)
+        return q[cond], I[cond], I_err[cond]
+
+    def calculate_model_data(q_exp, mod_dict):
+        
+        model_data = []
+        for name, (q_mod, I_mod) in mod_dict.items():
+            f = UnivariateSpline(q_mod, I_mod, s=0)
+            I_mod_interp = f(q_exp)
+            scale_factor = np.sum(I_exp * I_mod_interp) / np.sum(I_mod_interp ** 2)
+            # scale_factor = 1
+
+            I_mod_scaled = I_mod_interp * scale_factor
+
+            logged_residual = np.log(I_exp) - np.log(I_mod_scaled)
+
+            delta_residual = (I_exp - I_mod_scaled) / I_exp_err
+            delta_residual_smoothed = lowess(delta_residual, q_exp, frac=0.1)
+
+            chi_squared = np.sum(((I_exp - I_mod_scaled) / I_exp_err) ** 2) / len(I_exp)
+
+            print(name, chi_squared)
+            model_data.append({
+                'name': name,
+                'I_mod_scaled': I_mod_scaled,
+                'logged_residual': logged_residual,
+                'delta_residual': delta_residual,
+                'delta_residual_smoothed': delta_residual_smoothed,
+                'chi_squared': chi_squared
+            })
+        return model_data
+
+    def setup_plot():
+        plt.rcParams.update({'font.family': 'Arial'})
+        fig = plt.figure(figsize=(10, 7), dpi=300)
+        gs = fig.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.1)
+        ax0 = fig.add_subplot(gs[0])
+        ax1 = fig.add_subplot(gs[1], sharex=ax0)
+        return fig, ax0, ax1
+
+    def plot_experimental_data(ax, q, I, I_err, exp_label='experimental'):
+        ax.errorbar(q, I, yerr=I_err, fmt='o', markersize=3, label=exp_label,
+                    color=COLORS['exp'], ecolor=COLORS['errorbar'], capsize=0.3, alpha=0.3, zorder=1)
+
+    def plot_model_data(ax0, ax1, q, model_data):
+        for i, data in enumerate(model_data):
+            color = MODEL_COLORS[i % len(MODEL_COLORS)]
+            ax0.plot(q, data['I_mod_scaled'], color=color, label=f"{data['name']+' χ2: '+str(np.round(data['chi_squared'],2))}", zorder=2, alpha=0.8, linewidth=2)
+            ax1.scatter(q, data['delta_residual'], marker='o', s=4, alpha=0.3, color=color)
+            ax1.plot(data['delta_residual_smoothed'][:, 0], data['delta_residual_smoothed'][:, 1], color=color, alpha=0.8, linewidth=2)
+
+    def format_axes(ax0, ax1):
+        ax0.set_ylabel('I(q)', fontsize=FONTSIZE['ylabel'])
+        ax0.set_yscale('log')
+        ax0.legend(fontsize=FONTSIZE['legend'], frameon=False, loc='lower left', bbox_to_anchor=(0.05, 0.05))
+        ax0.grid(True, linestyle=':', alpha=0.5)
+        ax0.tick_params(axis='both', which='major', labelsize=FONTSIZE['tick'])
+        ax0.tick_params(axis='both', which='minor', labelsize=FONTSIZE['tick']-2)
+
+        
+
+        ax1.set_xlabel('q (Å$^{-1}$)', fontsize=FONTSIZE['xlabel'])
+        ax1.set_ylabel('Δ / σ', fontsize=FONTSIZE['ylabel'])
+        ax1.grid(True, linestyle=':', alpha=0.5)
+        ax1.axhline(y=0, color='black', linestyle='--', alpha=0.5, linewidth=1)
+        ax1.tick_params(axis='both', which='major', labelsize=FONTSIZE['tick'])
+        ax1.tick_params(axis='both', which='minor', labelsize=FONTSIZE['tick']-2)
+
+        ax0.spines['top'].set_visible(False)
+        ax0.spines['right'].set_visible(False)
+        ax0.spines['bottom'].set_visible(False)
+        ax0.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+
+        ax1.spines['top'].set_visible(False)
+        ax1.spines['right'].set_visible(False)
+        ax1.axhline(y=0, color='black', linestyle='--', alpha=0.2, label='Zero Line')
     
-    if xlims is not None:
-        plt.xlim(xlims)
+        for ax in [ax0, ax1]:
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+
+    # Main execution
+    q_exp, I_exp, I_exp_err = preprocess_data(q_exp, I_exp, I_exp_err, q_exp.min(), maxq)
+    model_data = calculate_model_data(q_exp, mod_dict)
+    
+    fig, ax0, ax1 = setup_plot()
+    plot_experimental_data(ax0, q_exp, I_exp, I_exp_err, exp_label)
+    plot_model_data(ax0, ax1, q_exp, model_data)
+    format_axes(ax0, ax1)
+
+    fig.align_ylabels([ax0, ax1])
+    
+    if ylims:
+        ax0.set_ylim(ylims)
     else:
-        plt.xlim([q_lb, q_ub])
-
-    # Plot the residuals
-    plt.subplot(2, 1, 2)
-    plt.axhline(0, color='black', linestyle='--', linewidth=0.7)
-    plt.xlabel('q (Å⁻¹)')
-    plt.ylabel('Residuals (log scale)')
-    
-    if xlims is not None:
-        plt.xlim(xlims)
-    else:
-        plt.xlim([q_lb, q_ub])
-
-    for model in model_data:
-        q_model = model['q']
-        I_model = model['I']
-        label = model['label']
-
-        # Determine the common q range
-        q_min = max(min(q_exp), *[min(model['q']) for model in model_data])
-        q_max = min(max(q_exp), *[max(model['q']) for model in model_data])
-        q_common_indices = (q_exp >= q_min) & (q_exp <= q_max)
-        q_common = q_exp[q_common_indices]
-        I_exp_common = I_exp[q_common_indices]
+   
+        log_I = np.log10(I_exp)
+        q1, q3 = np.percentile(log_I, [25, 75])
+        iqr = q3 - q1
+        lower_bound = q1 - 1.5 * iqr
+        upper_bound = q3 + 1.5 * iqr
         
-        # Interpolate the model to match common q values
-        spline_model = UnivariateSpline(q_model, I_model, s=0)
-        interpolated_I_model = spline_model(q_common)
+        # Filter the outliers
+        non_outlier_mask = (log_I >= lower_bound) & (log_I <= upper_bound)
+        if np.any(non_outlier_mask):
+            y_min = 10**(np.min(log_I[non_outlier_mask]) - 0.2)
+            y_max = 10**(np.max(log_I[non_outlier_mask]) + 0.2)
+        else:
+            y_min = np.min(I_exp) * 0.5
+            y_max = np.max(I_exp) * 2
         
-        # Calculate the scale factor (least squares fit)
-        scale_factor = np.sum(I_exp_common * interpolated_I_model) / np.sum(interpolated_I_model**2)
+        ax0.set_ylim(y_min, y_max)
 
-        # Apply the scale factor
-        scaled_I_model = scale_factor * interpolated_I_model
-
-        # Calculate residuals
-        residuals = np.log(I_exp_common) - np.log(scaled_I_model)
-
-        # Plot the scaled model
-        plt.subplot(2, 1, 1)
-        plt.plot(q_common, scaled_I_model, label=f'{label} (scaled)')
-        
-        # Plot the residuals
-        plt.subplot(2, 1, 2)
-        plt.plot(q_common, residuals, label=f'Residuals: {label}')
-    
-    plt.subplot(2, 1, 1)
-    plt.legend()
-
-    plt.subplot(2, 1, 2)
-    plt.legend()
-
-    plt.tight_layout()
-    plt.show()
-
-     
-
-
-def calculate_chi_squared(I_exp, I_mod, sigma_exp=None):
-    
-    # If no experimental uncertainties provided, assume a value of 1
-    if sigma_exp is None:
-        sigma_exp = np.ones_like(I_exp)
-    
-    # Compute the chi-squared value
-    chi_squared = np.sum(((I_exp - I_mod) ** 2) / (sigma_exp ** 2)) * 1/(len(I_exp))
-    
-    return round(chi_squared, 2)
-
-def fancy_SAXS_profile_1(q_exp, I_exp, I_exp_err, q_mod1, I_mod1, label1, maxq=0.22, savename=None, data_label='data', reslim=0.35):
-
-    fontsize = 16
-
-    # set q range to match experimental data
-    minq = q_exp.min()
-    # maxq = q_exp.max()
-
-    cond = (q_exp >= minq) & (q_exp <= maxq)
-    q_exp = q_exp[cond]
-    I_exp = I_exp[cond]
-    I_exp_err = I_exp_err[cond]
-
-
-    # interpolate model to match experimental q values
-    f1 = UnivariateSpline(q_mod1, I_mod1, s=0)
-    q_mod1 = q_exp
-    I_mod1 = f1(q_exp)
-
-    scale_factor1 = np.sum(I_exp * I_mod1) / np.sum(I_mod1 ** 2)
-    I_mod1 = I_mod1 * scale_factor1
-
-    chisq1 = calculate_chi_squared(I_exp, I_mod1, sigma_exp=I_exp_err)
-
-
-    fig = plt.figure(figsize=(6, 5), dpi=300)
-    gs = gridspec.GridSpec(2, 1, height_ratios=[4, 1])  # 2:1 ratio with some space at the bottom
-
-    n_grain = 2
-
-    # Plot the experimental data
-    ax1 = plt.subplot(gs[0])
-    ax1.scatter(q_exp[::n_grain], I_exp[::n_grain], label=data_label, alpha=0.4, color='grey', s=3)
-    ax1.plot(q_mod1, I_mod1, label=label1+' χ2: '+str(chisq1), color='red', linewidth=1)
-
-    ax1.set_ylabel('I(q)', fontdict={'size': fontsize})
-    ax1.set_yscale('log')
-    ax1.legend()
-    # ax1.grid(True)
-    ax1.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
-    # ax1.set_xlim([min(q_mod), max(q_mod)])
-
-
-    # Plot the residuals
-    ax2 = plt.subplot(gs[1])
-    ax2.axhline(0, color='black', linestyle='--', linewidth=0.7)
-    ax2.set_xlabel('q (Å⁻¹)', fontdict={'size': fontsize})
-    ax2.set_ylabel('Residuals', fontdict={'size': fontsize})
-
-    # # Calculate residuals
-    residuals1 = np.log(I_exp) - np.log(I_mod1)
-    ax2.plot(q_exp, residuals1, color='red', linewidth=1)
-
-
-    # ax2.set_xlim([min(q_mod), max(q_mod)])
-    ax2.set_ylim([-reslim, reslim])
-
-    # Adjust tick size
-    for ax in [ax1, ax2]:
-        ax.tick_params(axis='both', which='major', labelsize=12)
-        ax.tick_params(axis='both', which='minor', labelsize=10)
-
-    # Align y-labels
-    fig.align_ylabels([ax1, ax2])
-
-    # Adjust layout
+    fig.align_ylabels([ax0, ax1])
     plt.tight_layout()
 
-    ax1.spines['top'].set_visible(False)
-    ax1.spines['right'].set_visible(False)
-    ax1.spines['bottom'].set_visible(False)
-
-    ax2.spines['top'].set_visible(False)
-    ax2.spines['right'].set_visible(False)
-
-    ax1.grid(True, color='lightgrey', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax2.grid(True, color='lightgrey', linestyle='--', linewidth=0.5, alpha=0.7)
-
-    # Add some padding to the left for y-labels
-    # plt.subplots_adjust(left=0.25)
+    
     if savename:
-        plt.savefig(savename, dpi=300)
-
-
+        plt.savefig(savename, format="svg", bbox_inches="tight")
     plt.show()
 
-
-def fancy_SAXS_profile_2(q_exp, I_exp, I_exp_err, q_mod1, I_mod1, label1, q_mod2, I_mod2, label2, maxq = 0.22, savename=None, data_label='data', reslim=0.35):
-    
-    fontsize = 16
-    # set q range to match experimental data
-    minq = q_exp.min()
-    
-    # maxq = q_exp.max()
-
-    cond = (q_exp >= minq) & (q_exp <= maxq)
-    q_exp = q_exp[cond]
-    I_exp = I_exp[cond]
-    I_exp_err = I_exp_err[cond]
-
-
-    # interpolate model to match experimental q values
-    f1 = UnivariateSpline(q_mod1, I_mod1, s=0)
-    q_mod1 = q_exp
-    I_mod1 = f1(q_exp)
-
-    scale_factor1 = np.sum(I_exp * I_mod1) / np.sum(I_mod1 ** 2)
-    I_mod1 = I_mod1 * scale_factor1
-
-    chisq1 = calculate_chi_squared(I_exp, I_mod1, sigma_exp=I_exp_err)
-
-
-    f2 = UnivariateSpline(q_mod2, I_mod2, s=0)
-    I_mod2 = f2(q_exp)
-    q_mod2 = q_exp
-
-    scale_factor2 = np.sum(I_exp * I_mod2) / np.sum(I_mod2 ** 2)
-    I_mod2 = I_mod2 * scale_factor2
-
-    chisq2 = calculate_chi_squared(I_exp, I_mod2, sigma_exp=I_exp_err)
-
-
-    fig = plt.figure(figsize=(6, 5), dpi=300)
-    gs = gridspec.GridSpec(2, 1, height_ratios=[4, 1])  # 2:1 ratio with some space at the bottom
-
-    n_grain = 2
-
-    # Plot the experimental data
-    ax1 = plt.subplot(gs[0])
-    ax1.scatter(q_exp[::n_grain], I_exp[::n_grain], label=data_label, alpha=0.4, color='grey', s=3)
-    ax1.plot(q_mod1, I_mod1, label=label1+' χ2: '+str(chisq1), color='red', linewidth=1)
-    ax1.plot(q_mod2, I_mod2, label=label2+' χ2:  '+str(chisq2), color='blue', linewidth=1)
-
-    ax1.set_ylabel('I(q)', fontdict={'size': fontsize})
-    ax1.set_yscale('log')
-    ax1.legend()
-    # ax1.grid(True)
-    ax1.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
-    # ax1.set_xlim([min(q_mod), max(q_mod)])
-
-
-    # Plot the residuals
-    ax2 = plt.subplot(gs[1])
-    ax2.axhline(0, color='black', linestyle='--', linewidth=0.7)
-    ax2.set_xlabel('q (Å⁻¹)', fontdict={'size': fontsize})
-    ax2.set_ylabel('Residuals', fontdict={'size': fontsize})
-
-    # # Calculate residuals
-    residuals1 = np.log(I_exp) - np.log(I_mod1)
-    ax2.plot(q_exp, residuals1, color='red', linewidth=1)
-
-    residuals2= np.log(I_exp) - np.log(I_mod2)
-    ax2.plot(q_exp, residuals2, color='blue', linewidth=1)
-
-    # ax2.set_xlim([min(q_mod), max(q_mod)])
-    ax2.set_ylim([-reslim, reslim])
-
-    # Adjust tick size
-    for ax in [ax1, ax2]:
-        ax.tick_params(axis='both', which='major', labelsize=12)
-        ax.tick_params(axis='both', which='minor', labelsize=10)
-
-    # Align y-labels
-    fig.align_ylabels([ax1, ax2])
-
-    # Adjust layout
-    plt.tight_layout()
-
-    ax1.spines['top'].set_visible(False)
-    ax1.spines['right'].set_visible(False)
-    ax1.spines['bottom'].set_visible(False)
-
-    ax2.spines['top'].set_visible(False)
-    ax2.spines['right'].set_visible(False)
-
-    ax1.grid(True, color='lightgrey', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax2.grid(True, color='lightgrey', linestyle='--', linewidth=0.5, alpha=0.7)
-
-    # Add some padding to the left for y-labels
-    # plt.subplots_adjust(left=0.25)
-    if savename:
-        plt.savefig(savename, dpi=300)
-
-
-    plt.show()
+    return model_data
