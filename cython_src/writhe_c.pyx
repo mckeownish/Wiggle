@@ -164,6 +164,127 @@ cpdef cnp.ndarray[cnp.float64_t, ndim=2] find_Sigma_array(cnp.ndarray[cnp.float6
     return 2*Sigma_array
 
 
+
+# --- PARALLEL_VERSION ---
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cpdef cnp.ndarray[cnp.float32_t, ndim=3] find_Sigma_array_batch_parallel(
+    cnp.ndarray[cnp.float32_t, ndim=3] trajectory,
+    int num_threads=1
+):
+    """
+    Computes writhe for all frames in parallel (within a single simulation).
+    
+    Parameters:
+    -----------
+    trajectory : numpy.ndarray, shape (n_frames, n_atoms, 3), dtype=float32
+    num_threads : int, number of OpenMP threads (default 1)
+    
+    Returns:
+    --------
+    numpy.ndarray, shape (n_frames, n_segments, n_segments), dtype=float32
+    """
+    cdef int n_frames = trajectory.shape[0]
+    cdef int n_atoms = trajectory.shape[1]
+    cdef int segment_num = n_atoms - 1
+    
+    cdef cnp.ndarray[cnp.float32_t, ndim=3] results = np.zeros(
+        (n_frames, segment_num, segment_num), dtype=np.float32
+    )
+    
+    cdef int frame_idx, i, j
+    cdef float[:, :, :] traj_view = trajectory
+    cdef float[:, :, :] results_view = results
+    
+    # Parallel loop over frames
+    for frame_idx in prange(n_frames, nogil=True, num_threads=num_threads):
+        for i in range(1, n_atoms - 1):
+            for j in range(0, i-1):
+                results_view[frame_idx, i, j] = <float>compute_gauss_int_nogil(
+                    &traj_view[frame_idx, i, 0],
+                    &traj_view[frame_idx, i+1, 0],
+                    &traj_view[frame_idx, j, 0],
+                    &traj_view[frame_idx, j+1, 0]
+                )
+        
+        # Multiply by 2
+        for i in range(segment_num):
+            for j in range(segment_num):
+                results_view[frame_idx, i, j] *= 2.0
+    
+    return results
+
+
+# GIL-free version - still uses doubles internally for precision
+cdef double compute_gauss_int_nogil(float* p1, float* p2, float* p3, float* p4) nogil:
+    """
+    GIL-free version for parallel computation.
+    Uses float32 input but double precision internally for accuracy.
+    """
+    cdef double r_12[3], r_13[3], r_14[3], r_23[3], r_24[3], r_34[3]
+    cdef double n1[3], n2[3], n3[3], n4[3]
+    cdef double Sigma_star, sign
+    cdef int k
+    
+    # Convert float32 to float64 and compute difference vectors
+    for k in range(3):
+        r_12[k] = <double>p2[k] - <double>p1[k]
+        r_13[k] = <double>p3[k] - <double>p1[k]
+        r_14[k] = <double>p4[k] - <double>p1[k]
+        r_23[k] = <double>p3[k] - <double>p2[k]
+        r_24[k] = <double>p4[k] - <double>p2[k]
+        r_34[k] = <double>p4[k] - <double>p3[k]
+    
+    # Compute unit vectors
+    unit_vec_from_cross_nogil(r_13, r_14, n1)
+    unit_vec_from_cross_nogil(r_14, r_24, n2)
+    unit_vec_from_cross_nogil(r_24, r_23, n3)
+    unit_vec_from_cross_nogil(r_23, r_13, n4)
+    
+    # Compute Sigma_star
+    Sigma_star = (asin(dot_product_nogil(n1, n2)) + 
+                  asin(dot_product_nogil(n2, n3)) +
+                  asin(dot_product_nogil(n3, n4)) + 
+                  asin(dot_product_nogil(n4, n1)))
+    
+    # Compute sign
+    sign = 1.0 if triple_product_nogil(r_34, r_12, r_13) > 0 else -1.0
+    
+    return 0.07957747155 * Sigma_star * sign  # 1/(4*pi)
+
+
+# Helper functions (all use double precision internally)
+cdef inline double dot_product_nogil(double* u1, double* u2) nogil:
+    return u1[0]*u2[0] + u1[1]*u2[1] + u1[2]*u2[2]
+
+cdef inline void cross_product_nogil(double* u1, double* u2, double* result) nogil:
+    result[0] = u1[1]*u2[2] - u1[2]*u2[1]
+    result[1] = u1[2]*u2[0] - u1[0]*u2[2]
+    result[2] = u1[0]*u2[1] - u1[1]*u2[0]
+
+cdef inline void unit_vec_from_cross_nogil(double* u1, double* u2, double* result) nogil:
+    cdef double norm
+    cdef int i
+    
+    cross_product_nogil(u1, u2, result)
+    
+    norm = sqrt(result[0]*result[0] + result[1]*result[1] + result[2]*result[2])
+    
+    if norm > 0:
+        for i in range(3):
+            result[i] /= norm
+    else:
+        for i in range(3):
+            result[i] = 0.0
+
+cdef inline double triple_product_nogil(double* a, double* b, double* c) nogil:
+    """Compute (a × b) · c"""
+    cdef double cross[3]
+    cross_product_nogil(a, b, cross)
+    return dot_product_nogil(cross, c)
+
+
 # find the writhe fingerprint - a varying sum metric 
 
 # cpdef cnp.ndarray[cnp.float64_t, ndim=2] writhe_fingerprint(cnp.ndarray[cnp.float64_t, ndim=2] segments):
