@@ -234,6 +234,7 @@ cpdef cnp.ndarray[cnp.float32_t, ndim=3] find_Sigma_array_batch_parallel(
     cdef int n_frames = trajectory.shape[0]
     cdef int n_atoms = trajectory.shape[1]
     cdef int segment_num = n_atoms - 1
+    cdef int _num_threads = num_threads
     
     cdef cnp.ndarray[cnp.float32_t, ndim=3] results = np.zeros(
         (n_frames, segment_num, segment_num), dtype=np.float32
