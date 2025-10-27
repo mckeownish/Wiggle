@@ -197,22 +197,24 @@ cpdef cnp.ndarray[cnp.float32_t, ndim=3] find_Sigma_array_batch_parallel(
     cdef float[:, :, :] traj_view = trajectory
     cdef float[:, :, :] results_view = results
     
-    # Parallel loop over frames
-    for frame_idx in prange(n_frames, nogil=True, num_threads=num_threads):
-        for i in range(1, n_atoms - 1):
-            for j in range(0, i-1):
-                results_view[frame_idx, i, j] = <float>compute_gauss_int_nogil(
-                    &traj_view[frame_idx, i, 0],
-                    &traj_view[frame_idx, i+1, 0],
-                    &traj_view[frame_idx, j, 0],
-                    &traj_view[frame_idx, j+1, 0]
-                )
+    with nogil:
+
+        # Parallel loop over frames
+        for frame_idx in prange(n_frames, num_threads=num_threads, schedule='dynamic'):
+            for i in range(1, n_atoms - 1):
+                for j in range(0, i-1):
+                    results_view[frame_idx, i, j] = <float>compute_gauss_int_nogil(
+                        &traj_view[frame_idx, i, 0],
+                        &traj_view[frame_idx, i+1, 0],
+                        &traj_view[frame_idx, j, 0],
+                        &traj_view[frame_idx, j+1, 0]
+                    )
+            
+            # Multiply by 2
+            for i in range(segment_num):
+                for j in range(segment_num):
+                    results_view[frame_idx, i, j] *= 2.0
         
-        # Multiply by 2
-        for i in range(segment_num):
-            for j in range(segment_num):
-                results_view[frame_idx, i, j] *= 2.0
-    
     return results
 
 
