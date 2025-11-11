@@ -15,7 +15,7 @@ import warnings
 import pickle
 
 # form factors for hydrated geometric waxsis approx 
-with open('/Users/josh/Documents/PhD/NoLooseEnds_Lab/FoXS-carbonara-comparison/Improving_Carbonara/models/implicit_form_factor_dict_q50_pro_corr_10-65.pkl', 'rb') as f:
+with open('best_formfactors_chi_1_68_q20.pkl', 'rb') as f:
     implicit_ff = pickle.load(f)
 
 
